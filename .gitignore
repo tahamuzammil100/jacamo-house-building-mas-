@@ -1,0 +1,7 @@
+build/
+.gradle/
+log/
+*.class
+ANSWERS.txt
+.history
+.gradle

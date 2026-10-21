@@ -4,15 +4,23 @@ i_am_winning(Art)   // check if I placed the current best bid on auction artifac
    :- currentWinner(W)[artifact_id(Art)] &
       .my_name(Me) & .term2string(Me,MeS) & W == MeS.
 
-/* auxiliary plans for Cartago */
+/* PW2: Presentation phase — send profile to giacomo */
 
 +!start : true
-               <- for ( my_task(Task) ) {
-                      .concat("auction_for_",Task,Result);
-                      // .print("discovering ",Result);
-                      !discover_art(Result);
-                      };
-                  .
+   <- !present_to_giacomo.
+
+// Send all my_task beliefs to giacomo as external description
++!present_to_giacomo
+   <- .my_name(Me);
+      for ( my_task(Task) ) {
+          .send(giacomo, tell, my_task(Task))
+      }.
+
+// When giacomo sends an invitation: auction_to_use(Task, ArtName)
+// focus on that specific artifact to start bidding
++auction_to_use(Task, ArtName)[source(giacomo)]
+   <- .print("Invited to auction for ", Task, " → ", ArtName);
+      !discover_art(ArtName).
 
 // try to find a particular artifact and then focus on it
 +!discover_art(ToolName)

@@ -19,6 +19,41 @@ my_preference("Plumbing",         500).
 my_preference("ElectricalSystem", 500).
 my_preference("Painting",        1200).
 
+// PW3: Reputation scores for known agents (0-10 scale)
+// companyC and companyD have multiple instances (companyC1..5, companyD1..13)
+// so we assign reputation per individual agent name
+reputation("companyA",  9).   // reliable plumber, always on time
+reputation("companyB",  7).   // decent site prep company
+reputation("companyC1", 6).   // average multi-tasker
+reputation("companyC2", 6).
+reputation("companyC3", 6).
+reputation("companyC4", 6).
+reputation("companyC5", 6).
+reputation("companyD1",  2).   // random bidder, unreliable
+reputation("companyD2",  2).
+reputation("companyD3",  2).
+reputation("companyD4",  2).
+reputation("companyD5",  2).
+reputation("companyD6",  2).
+reputation("companyD7",  2).
+reputation("companyD8",  2).
+reputation("companyD9",  2).
+reputation("companyD10", 2).
+reputation("companyD11", 2).
+reputation("companyD12", 2).
+reputation("companyD13", 2).
+reputation("companyE",   9).   // excellent for structural work
+
+// Giacomo's minimum reputation threshold to get an invitation
+min_reputation(5).
+
+// PW3: rule — agent is trusted if its reputation >= threshold
+trusted(Ag) :-
+    .term2string(Ag, AgS) &
+    reputation(AgS, R) &
+    min_reputation(MinR) &
+    R >= MinR.
+
 // rule for counting the number of tasks based on the observable properties of the auction artifacts
 number_of_tasks(NS) :- .findall( S, task(S), L) & .length(L,NS).
 
@@ -59,29 +94,47 @@ enough_winners :- number_of_tasks(NS) &
 /* Plans for the contracting phase */
 
 +!contract : true
-   <- !create_auction_artifacts;
+   <- !presentation_phase;
+      !create_auction_artifacts;
       !wait_for_bids.
 
-// Plan for creating all the artifacts for each task
+// PW2: Wait for company agents to present themselves, then invite them
++!presentation_phase
+   <- println("Waiting 5 seconds for company presentations...");
+      .wait(5000);
+      println("Presentation phase done. Processing profiles...").
+
+// Plan for creating all the artifacts for each task AND inviting relevant agents
 +!create_auction_artifacts
-   <- for ( my_preference(Task,Amount) ) {  // iterate over the beliefs my_preference
-          !create_auction_artifact(Task, Amount,ArtId);
-          };
-       .
+   <- for ( my_preference(Task,Amount) ) {
+          !create_auction_artifact(Task, Amount, _);
+      }.
 
 // Plan for creation of an auction artifact for a given task and maxprice
-+!create_auction_artifact(Task,MaxPrice,ArtId)
-   <- .concat("auction_for_",Task,ArtName);
+// PW3: invite only agents with skill AND sufficient reputation
++!create_auction_artifact(Task, MaxPrice, ArtId)
+   <- .concat("auction_for_", Task, ArtName);
       makeArtifact(ArtName, "tools.AuctionArt", [Task, MaxPrice], ArtId);
-      focus(ArtId).
-// Recovery Plan for failure in the creation of an auction artifact for a given task and maxprice      
--!create_auction_artifact(Task,MaxPrice)[error_code(Code)]
-   <- .print("Error creating artifact ", Code).
+      focus(ArtId);
+      // find agents with the skill who also pass the reputation threshold
+      .findall(Ag, my_task(Task)[source(Ag)] & trusted(Ag), TrustedAgents);
+      .length(TrustedAgents, N);
+      println("Task ", Task, " → inviting ", N, " trusted agents (reputation filter active)");
+      for ( .member(Ag, TrustedAgents) ) {
+          .term2string(Ag, AgS);
+          ?reputation(AgS, R);
+          println("  + ", Ag, " (reputation: ", R, ")");
+          .send(Ag, tell, auction_to_use(Task, ArtName))
+      }.
+
+// Recovery Plan for failure in the creation of an auction artifact
+-!create_auction_artifact(Task,MaxPrice,_)[error_code(Code)]
+   <- .print("Error creating artifact for ", Task, ": ", Code).
 
 // Plan for handling the bids and getting the winner of an auction
 +!wait_for_bids
    <- println("Waiting bids for 5 seconds...");
-      .wait(5000); // use an internal deadline of 5 seconds to close the auctions
+      .wait(5000);
       !show_winners.
 
 +!show_winners
@@ -97,7 +150,7 @@ enough_winners :- number_of_tasks(NS) &
    <- println;
       println("*** Execution Phase ***");
       println("Waiting the `go` from the user");
-      //!!go;  // Commented to stop the execution and waiting for message
+      !!go;  // Auto-trigger execution phase after contracting
       .
 
 +!go <-
